@@ -1,0 +1,78 @@
+name: Release
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: false
+
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            cross: false
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout GotaTun
+        uses: actions/checkout@v3
+        with:
+          repository: mullvad/gotatun
+          fetch-depth: 0
+
+      - name: Build
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: "--release --bin gotatun"
+          strip: true
+
+      - name: Pack
+        run: |
+          mkdir -p release-${{ matrix.target }}
+          mv ./target/${{ matrix.target }}/release/gotatun ./release-${{ matrix.target }}/gotatun
+          cd ./release-${{ matrix.target }}
+          tar -czf gotatun-${{ matrix.target }}.tar.gz gotatun
+          rm -rf gotatun
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            brew install md5sha1sum
+          fi
+          md5sum gotatun-${{ matrix.target }}.tar.gz > gotatun-${{ matrix.target }}.tar.gz.md5
+
+      - name: Get release info
+        id: info
+        run: |
+          git fetch --tags
+          echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: Build from https://github.com/mullvad/gotatun/commit/${{ steps.info.outputs.sha }}
+          files: release-${{ matrix.target }}/*
+          name: ${{ steps.info.outputs.tag }} - ${{ steps.info.outputs.date }}
+          tag_name: latest
