@@ -33,6 +33,10 @@ jobs:
             os: macos-latest
             cross: false
 
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout GotaTun
